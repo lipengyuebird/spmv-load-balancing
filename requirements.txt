@@ -1,5 +1,13 @@
+<<<<<<< HEAD
 pygraphblas
 graphviz
 matplotlib
 mpi4py
 numpy
+=======
+pygraphblas
+graphviz
+matplotlib
+mpi4py
+numpy
+>>>>>>> 9a95f703d7e37b3d9f61a72d0e443f0c274de181
