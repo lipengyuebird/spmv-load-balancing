@@ -1,39 +1,27 @@
 # ./venv/Scripts/python
 # _*_ coding: utf-8 _*_
-# @Time     : 2022/12/20 21:05
+# @Time     : 2022/12/10 21:05
 # @Author   : Perye(Li Pengyu)
 # @FileName : indexed_matrix.py
 # @Software : PyCharm
 
 import sys
-import weakref
-import operator
-import random
-from array import array
-from pathlib import Path
-from functools import partial
-import numpy as np
+sys.path.append('/root/spmv-load-balancing')
+
 
 from pygraphblas.base import (
     lib,
     ffi,
     NULL,
     NoValue,
-    _check as _base_check,
-    _error_codes,
-    _build_range,
-    _get_select_op,
-    _get_bin_op,
-    GxB_INDEX_MAX,
-    GraphBLASException,
 )
 
 from pygraphblas import Matrix, BOOL, types
-from bisect import bisect_left
-
 from pygraphblas.binaryop import current_binop
 from pygraphblas.monoid import Monoid
 from pygraphblas.semiring import Semiring
+
+from bisect import bisect_left
 
 
 def _check(obj, res):
@@ -58,16 +46,14 @@ class IndexedMatrix(Matrix):
         _check(self, lib.GrB_Matrix_free(self._matrix))
 
     def update_indices(self):
+        self.row_ptr = [0]
         current_row = 0
         n = 0
         for i in self.I:
             if i > current_row:
                 self.row_ptr.extend([n] * (i - current_row))
                 current_row = i
-        # for i in range(self.nvals):
-        #     if self.I[i] > current_row:
-        #         self.row_ptr.extend([i] * (self.I[i] - current_row))
-        #         current_row = self.I[i]
+            n += 1
         self.row_ptr.append(self.nvals)
 
     @classmethod
@@ -76,16 +62,7 @@ class IndexedMatrix(Matrix):
         matrix.update_indices()
         return matrix
 
-    def eadd(
-        self,
-        other,
-        add_op=None,
-        cast=None,
-        out=None,
-        mask=None,
-        accum=None,
-        desc=None,
-    ):
+    def eadd(self, other, add_op=None, cast=None, out=None, mask=None, accum=None, desc=None,):
         func = lib.GrB_Matrix_eWiseAdd_BinaryOp
         if add_op is None:
             add_op = current_binop.get(NULL)
@@ -105,18 +82,7 @@ class IndexedMatrix(Matrix):
         if add_op is NULL:
             add_op = out.type._default_addop()
 
-        _check(
-            self,
-            func(
-                out._matrix[0],
-                mask,
-                accum,
-                add_op.get_op(),
-                self._matrix[0],
-                other._matrix[0],
-                desc,
-            ),
-        )
+        _check(self, func(out._matrix[0], mask,accum, add_op.get_op(), self._matrix[0], other._matrix[0], desc))
         return out
 
     def cal_division_idx(self, ninstances, nth, unit='nzz'):
@@ -126,7 +92,10 @@ class IndexedMatrix(Matrix):
             if nth == 0:
                 idx_list = [(0, 0), (bisect_left(self.row_ptr, block_size) - 1, self.cols[block_size - 1])]
             else:
-                idx_list.append((bisect_left(self.row_ptr, nth * block_size) - 1, self.cols[nth * block_size - 1]))
+                idx_list = [
+                    (bisect_left(self.row_ptr, nth * block_size) - 1, self.cols[nth * block_size - 1]),
+                    (bisect_left(self.row_ptr, (nth + 1) * block_size) - 1, self.cols[(nth + 1) * block_size - 1])
+                ]
         elif 'row' == unit:
             block_size = self.nrows // ninstances
             idx_list = [(block_size * nth, 0), (block_size * (nth + 1), 0)]
@@ -134,11 +103,14 @@ class IndexedMatrix(Matrix):
 
     def extract_division_unit(self, start, end, unit='nzz'):
         if 'nzz' == unit:
-            # m = super().sparse(self.type, )
-            # sub_matrix = self.extract_matrix(slice(idx_list[n - 1] + 1, slice(idx_list[n])))
-            pass
+            m = self.extract_matrix(slice(start[0], max(end[0], start[0])))
+            for i in range(0, start[1]):
+                del(m[0, i])
+            for i in range(end[1], m.nrows):
+                del(m[end[0] - start[0], i])
+            return m
         elif 'row' == unit:
-            return self.extract_matrix(slice(start[0], max(end[0] - 1, start[0])))
+            return self.extract_matrix(slice(start[0], max(end[0] - 1, start[0])), slice(0, self.ncols - 1))
 
 
 if __name__ == '__main__':
@@ -153,11 +125,8 @@ if __name__ == '__main__':
     values = [True for i in range(len(row_indices))]
     # graph = grb.Matrix.sparse(grb.types.BOOL, NUM_NODES, NUM_NODES)
     graph = IndexedMatrix.from_lists(row_indices, col_indices, values, NUM_NODES, NUM_NODES, BOOL)
-    graph[0, 0] = False
-    graph.clear()
-    print(graph)
+    graph.update_indices()
     print(graph.row_ptr)
-    print(graph.cal_division_idx(4, 'nzz'))
 
     # print(graph[0])
     # print(graph.format)

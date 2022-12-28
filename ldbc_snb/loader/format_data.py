@@ -1,6 +1,6 @@
 # ./venv/Scripts/python
 # _*_ coding: utf-8 _*_
-# @Time     : 2022/12/23 14:15
+# @Time     : 2022/12/14 14:15
 # @Author   : Perye(Li Pengyu)
 # @FileName : format_data.py
 # @Software : PyCharm
@@ -11,9 +11,9 @@ import os
 file_list = []
 lines = []
 
-for i in os.listdir('/home/perye/out-sf10/graphs/csv/bi/composite-merged-fk/initial_snapshot/dynamic/Person_knows_Person/'):
+for i in os.listdir('/home/perye/out-sf100/graphs/csv/bi/composite-merged-fk/initial_snapshot/dynamic/Person_knows_Person/'):
     if i.startswith('part'):
-        file_list.append('/home/perye/out-sf10/graphs/csv/bi/composite-merged-fk/initial_snapshot/dynamic/Person_knows_Person/' + i)
+        file_list.append('/home/perye/out-sf100/graphs/csv/bi/composite-merged-fk/initial_snapshot/dynamic/Person_knows_Person/' + i)
 
 
 for file in file_list:
@@ -39,5 +39,5 @@ for i in range(2):
         l[i][j] = d[l[i][j]]
 
 
-with open('sf10_dataset/Person_knows_Person1.json', 'w') as f:
+with open('ldbc_snb/sf100_dataset/Person_knows_Person.json', 'w') as f:
     json.dump(l, f)

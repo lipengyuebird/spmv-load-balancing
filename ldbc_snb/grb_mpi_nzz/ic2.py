@@ -1,58 +1,54 @@
 # ./venv/Scripts/python
 # _*_ coding: utf-8 _*_
-# @Time     : 2022/12/23 19:24
+# @Time     : 2022/12/14 19:24
 # @Author   : Perye(Li Pengyu)
 # @FileName : ic2.py
 # @Software : PyCharm
-
+import os
 import sys
-import time
+sys.path.append('/root/spmv-load-balancing')
 
-sys.path.append('/home/perye/spmv-load-balancing')
-
-import random
+import logging
 
 import numpy as np
 from mpi4py import MPI
-
-from util.serialization import to_np_vector
 from pygraphblas import *
 
+from util.serialization import to_np_vector
 from ldbc_snb.loader import loader
-person_knows_person, pkp_node = loader.load_matrix_from_file('/home/perye/spmv-load-balancing/ldbc_snb/sf10_dataset/Person_knows_Person1.json')
+
+logging.basicConfig(
+    level=logging.DEBUG,
+    filename=f'/home/perye/spmv-load-balancing/ldbc_snb/result/{sys.argv[0].split("/")[-2]}-{os.path.basename(sys.argv[0]).replace(".py", "")}.log',
+    filemode='a',
+    format='%(asctime)s - %(pathname)s[line:%(lineno)d] - %(levelname)s: %(message)s'
+)
+
+comm = MPI.COMM_WORLD
+
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'starting'))
+
+person_knows_person, pkp_node = loader.load_matrix_from_file('/home/perye/spmv-load-balancing/ldbc_snb/sf100_dataset/Person_knows_Person.json')
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'data_loaded'))
 
 g = person_knows_person
 g.update_indices()
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'row_ptr_calculated'))
 
 mask_list = [1 for i in range(pkp_node)]
-# mask_list = [0 for i in range(pkp_node)]
-# mask_list[5] = 1
-
-print(mask_list)
 mask = Vector.from_list(mask_list)
 res = np.zeros(pkp_node, np.int8)
-comm = MPI.COMM_WORLD
+division_indices = g.cal_division_idx(comm.size, comm.rank, 'nzz')
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'div_indices_calculated'))
 
-# comm.Barrier()
-# t_start = MPI.Wtime()
+my_m = g.extract_division_unit(*division_indices, 'nzz')
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'div_unit_extracted'))
 
-division_indices = g.cal_division_idx(comm.size, comm.rank, 'row')
-t_start = time.time()
-my_new_vec = g.extract_division_unit(*division_indices, 'row').mxv(mask)
-t_diff = time.time() - t_start
+my_new_vec = my_m.mxv(mask)
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'spmv_done'))
 
 my_new_vec = to_np_vector(my_new_vec, division_indices[0][0], pkp_node)
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'serialized'))
 
-comm.Allreduce(
-    [my_new_vec, MPI.INT],
-    [res, MPI.INT],
-    MPI.SUM,
-)
-
-# comm.Barrier()
-# t_diff = time.time() - t_start
-
-print("finished in %5.2fs: %5.2f hops per second" %
-       (t_diff, 1 / t_diff)
-       )
-print("============================================================================")
+comm.Allreduce([my_new_vec, MPI.INT], [res, MPI.INT], MPI.SUM)
+logging.info('instance %d of %d - %s' % (comm.rank, comm.size, 'done'))
